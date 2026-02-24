@@ -6,5 +6,6 @@ load_dotenv()
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 PASSWORD = os.environ["PASSWORD"]
 
+PRINTER_IP = os.getenv("PRINTER_IP", "").strip() or None
 PRINTER_SUBNET = os.getenv("PRINTER_SUBNET", "192.168.0")
 PRINTER_PORT = int(os.getenv("PRINTER_PORT", "9100"))

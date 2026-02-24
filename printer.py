@@ -3,7 +3,7 @@ import logging
 import subprocess
 import tempfile
 
-from config import PRINTER_SUBNET, PRINTER_PORT
+from config import PRINTER_IP, PRINTER_SUBNET, PRINTER_PORT
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,11 @@ PJL_FOOTER = b"\x1b%-12345X"
 def discover_printer() -> str | None:
     """Scan the printer subnet for an open port 9100. Return first hit."""
     global _cached_printer_ip
+
+    # Use static IP if configured
+    if PRINTER_IP:
+        logger.info("Using configured printer IP: %s", PRINTER_IP)
+        return PRINTER_IP
 
     # Try cached IP first
     if _cached_printer_ip and _is_port_open(_cached_printer_ip):
