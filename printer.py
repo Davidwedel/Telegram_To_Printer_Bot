@@ -22,10 +22,12 @@ def discover_printer() -> str | None:
     """Scan the printer subnet for an open port 9100. Return first hit."""
     global _cached_printer_ip
 
-    # Use static IP if configured
+    # Use static IP if configured and reachable
     if PRINTER_IP:
-        logger.info("Using configured printer IP: %s", PRINTER_IP)
-        return PRINTER_IP
+        if _is_port_open(PRINTER_IP):
+            logger.info("Using configured printer IP: %s", PRINTER_IP)
+            return PRINTER_IP
+        logger.warning("Configured PRINTER_IP %s is not reachable, falling back to scan", PRINTER_IP)
 
     # Try cached IP first
     if _cached_printer_ip and _is_port_open(_cached_printer_ip):
