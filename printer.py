@@ -92,8 +92,14 @@ def print_image(image_bytes: bytes) -> None:
     img = Image.open(io.BytesIO(image_bytes))
     img = img.convert("RGB")
 
-    # Fit image to letter page preserving aspect ratio
-    img.thumbnail((LETTER_WIDTH, LETTER_HEIGHT), Image.LANCZOS)
+    # Scale image to fit letter page preserving aspect ratio (both up and down)
+    width_ratio = LETTER_WIDTH / img.width
+    height_ratio = LETTER_HEIGHT / img.height
+    scale_ratio = min(width_ratio, height_ratio)
+
+    new_width = int(img.width * scale_ratio)
+    new_height = int(img.height * scale_ratio)
+    img = img.resize((new_width, new_height), Image.LANCZOS)
 
     # Center on white letter-sized background
     background = Image.new("RGB", (LETTER_WIDTH, LETTER_HEIGHT), (255, 255, 255))
