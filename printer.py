@@ -1,7 +1,10 @@
+import io
 import socket
 import logging
 import subprocess
 import tempfile
+
+from PIL import Image
 
 from config import PRINTER_IP, PRINTER_SUBNET, PRINTER_PORT
 
@@ -78,6 +81,33 @@ def _fit_to_letter(pdf_bytes: bytes) -> bytes:
             raise RuntimeError("Failed to reprocess PDF to Letter size")
         with open(outfile.name, "rb") as f:
             return f.read()
+
+
+LETTER_WIDTH = 2550   # 8.5" at 300 dpi
+LETTER_HEIGHT = 3300  # 11"  at 300 dpi
+
+
+def print_image(image_bytes: bytes) -> None:
+    """Convert an image to a letter-sized PDF and print it."""
+    img = Image.open(io.BytesIO(image_bytes))
+    img = img.convert("RGB")
+
+    # Fit image to letter page preserving aspect ratio
+    img.thumbnail((LETTER_WIDTH, LETTER_HEIGHT), Image.LANCZOS)
+
+    # Center on white letter-sized background
+    background = Image.new("RGB", (LETTER_WIDTH, LETTER_HEIGHT), (255, 255, 255))
+    x = (LETTER_WIDTH - img.width) // 2
+    y = (LETTER_HEIGHT - img.height) // 2
+    background.paste(img, (x, y))
+
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        background.save(tmp, "PDF", resolution=300)
+        tmp.flush()
+        with open(tmp.name, "rb") as f:
+            pdf_bytes = f.read()
+
+    print_pdf(pdf_bytes)
 
 
 def print_pdf(pdf_bytes: bytes) -> None:
