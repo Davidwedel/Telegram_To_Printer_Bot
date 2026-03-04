@@ -43,6 +43,10 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.message.text.strip().lower() == "ping":
+        await update.message.reply_text("ping")
+        return
+
     pending = context.user_data.get("pending_doc")
     pending_type = context.user_data.get("pending_type", "pdf")
     if not pending:
