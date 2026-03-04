@@ -1,5 +1,6 @@
 import hmac
 import logging
+import traceback
 
 from telegram import Update
 from telegram.ext import (
@@ -10,7 +11,7 @@ from telegram.ext import (
     filters,
 )
 
-from config import BOT_TOKEN, PASSWORD
+from config import ADMIN_CHAT_ID, BOT_TOKEN, PASSWORD
 from db import authorize_user, init_db, is_authorized
 from printer import print_image, print_pdf
 
@@ -19,6 +20,15 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
+
+
+async def notify_admin(context: ContextTypes.DEFAULT_TYPE, message: str) -> None:
+    if not ADMIN_CHAT_ID:
+        return
+    try:
+        await context.bot.send_message(chat_id=ADMIN_CHAT_ID, text=message)
+    except Exception:
+        logger.exception("Failed to notify admin")
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -57,6 +67,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         except Exception:
             logger.exception("Print failed")
             await update.message.reply_text("Printing failed. Is the printer on?")
+            user = update.effective_user
+            await notify_admin(
+                context,
+                f"Print failed (auth flow)\nUser: {user.id} (@{user.username})\n\n{traceback.format_exc()}",
+            )
     else:
         context.user_data.pop("pending_doc")
         context.user_data.pop("pending_type", None)
@@ -89,6 +104,11 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         except Exception:
             logger.exception("Print failed")
             await update.message.reply_text("Printing failed. Is the printer on?")
+            user = update.effective_user
+            await notify_admin(
+                context,
+                f"Print failed (document)\nUser: {user.id} (@{user.username})\nFile: {doc.file_name}\n\n{traceback.format_exc()}",
+            )
     else:
         context.user_data["pending_doc"] = doc
         context.user_data["pending_type"] = "image" if is_image else "pdf"
@@ -109,6 +129,11 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         except Exception:
             logger.exception("Print failed")
             await update.message.reply_text("Printing failed. Is the printer on?")
+            user = update.effective_user
+            await notify_admin(
+                context,
+                f"Print failed (photo)\nUser: {user.id} (@{user.username})\n\n{traceback.format_exc()}",
+            )
     else:
         context.user_data["pending_doc"] = photo
         context.user_data["pending_type"] = "image"
