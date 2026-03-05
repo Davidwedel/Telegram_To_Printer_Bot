@@ -38,13 +38,46 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         "Send a PDF, image, or photo to print.\n"
-        "New users will be asked for a password once."
+        "New users will be asked for a password once.\n"
+        "Use /admin <message> to send a message to the admin."
     )
+
+
+async def contact_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if context.args:
+        user = update.effective_user
+        message = " ".join(context.args)
+        await notify_admin(
+            context,
+            f"Message from user {user.id} (@{user.username}):\n{message}",
+        )
+        await update.message.reply_text("Your message has been sent to the admin.")
+    else:
+        context.user_data["awaiting_admin_msg"] = True
+        await update.message.reply_text(
+            "Your next message will be sent to the admin. Send /cancel to cancel."
+        )
+
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if context.user_data.pop("awaiting_admin_msg", None):
+        await update.message.reply_text("Cancelled.")
+    else:
+        await update.message.reply_text("Nothing to cancel.")
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.message.text.strip().lower() == "ping":
         await update.message.reply_text("ping")
+        return
+
+    if context.user_data.pop("awaiting_admin_msg", False):
+        user = update.effective_user
+        await notify_admin(
+            context,
+            f"Message from user {user.id} (@{user.username}):\n{update.message.text}",
+        )
+        await update.message.reply_text("Your message has been sent to the admin.")
         return
 
     pending = context.user_data.get("pending_doc")
@@ -149,6 +182,8 @@ def main() -> None:
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(CommandHandler("admin", contact_admin))
+    app.add_handler(CommandHandler("cancel", cancel))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
