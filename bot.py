@@ -43,7 +43,13 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     )
 
 
+AUTH_SUCCESS_MSG = "Authenticated! Use /admin to contact the admin."
+
+
 async def contact_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update.effective_user.id):
+        await update.message.reply_text("You need to authenticate first. Send me a message to get started.")
+        return
     if context.args:
         user = update.effective_user
         message = " ".join(context.args)
@@ -60,15 +66,66 @@ async def contact_admin(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    if context.user_data.pop("awaiting_admin_msg", None):
+    if context.user_data.pop("awaiting_admin_msg", None) or context.user_data.pop("awaiting_auth", None):
+        context.user_data.pop("pending_doc", None)
+        context.user_data.pop("pending_type", None)
         await update.message.reply_text("Cancelled.")
     else:
         await update.message.reply_text("Nothing to cancel.")
 
 
+async def _complete_auth(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Check password, authorize user, and handle the pending action. Returns True on success."""
+    user = update.effective_user
+    if not hmac.compare_digest(update.message.text.strip(), PASSWORD):
+        context.user_data.pop("pending_doc", None)
+        context.user_data.pop("pending_type", None)
+        context.user_data.pop("awaiting_auth", None)
+        await update.message.reply_text("Wrong password.")
+        return False
+
+    authorize_user(user.id, user.username)
+    context.user_data.pop("awaiting_auth", None)
+    logger.info("Authorized user %s (%s)", user.id, user.username)
+
+    pending = context.user_data.pop("pending_doc", None)
+    pending_type = context.user_data.pop("pending_type", "pdf")
+
+    if pending is None:
+        await update.message.reply_text(AUTH_SUCCESS_MSG + "\n\nSend me a PDF, image, or photo to print.")
+        return True
+
+    await update.message.reply_text(AUTH_SUCCESS_MSG + "\n\nPrinting...")
+    try:
+        file = await pending.get_file()
+        data = bytes(await file.download_as_bytearray())
+        if pending_type == "image":
+            print_image(data)
+        else:
+            print_pdf(data)
+        await update.message.reply_text("Sent to printer.")
+    except Exception:
+        logger.exception("Print failed")
+        await update.message.reply_text("Printing failed. Is the printer on?")
+        await notify_admin(
+            context,
+            f"Print failed (auth flow)\nUser: {user.id} (@{user.username})\n\n{traceback.format_exc()}",
+        )
+    return True
+
+
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.message.text.strip().lower() == "ping":
         await update.message.reply_text("ping")
+        return
+
+    if context.user_data.get("awaiting_auth"):
+        await _complete_auth(update, context)
+        return
+
+    if not is_authorized(update.effective_user.id):
+        context.user_data["awaiting_auth"] = True
+        await update.message.reply_text("Please send the password to continue.")
         return
 
     if context.user_data.pop("awaiting_admin_msg", False):
@@ -80,39 +137,7 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await update.message.reply_text("Your message has been sent to the admin.")
         return
 
-    pending = context.user_data.get("pending_doc")
-    pending_type = context.user_data.get("pending_type", "pdf")
-    if not pending:
-        await update.message.reply_text("Send me a PDF, image, or photo to print.")
-        return
-
-    if hmac.compare_digest(update.message.text.strip(), PASSWORD):
-        user = update.effective_user
-        authorize_user(user.id, user.username)
-        context.user_data.pop("pending_doc")
-        context.user_data.pop("pending_type", None)
-        logger.info("Authorized user %s (%s)", user.id, user.username)
-        await update.message.reply_text("Authenticated! Printing...")
-        try:
-            file = await pending.get_file()
-            data = bytes(await file.download_as_bytearray())
-            if pending_type == "image":
-                print_image(data)
-            else:
-                print_pdf(data)
-            await update.message.reply_text("Sent to printer.")
-        except Exception:
-            logger.exception("Print failed")
-            await update.message.reply_text("Printing failed. Is the printer on?")
-            user = update.effective_user
-            await notify_admin(
-                context,
-                f"Print failed (auth flow)\nUser: {user.id} (@{user.username})\n\n{traceback.format_exc()}",
-            )
-    else:
-        context.user_data.pop("pending_doc")
-        context.user_data.pop("pending_type", None)
-        await update.message.reply_text("Wrong password. File rejected.")
+    await update.message.reply_text("Send me a PDF, image, or photo to print.")
 
 
 IMAGE_MIME_TYPES = {"image/jpeg", "image/png"}
@@ -149,7 +174,8 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     else:
         context.user_data["pending_doc"] = doc
         context.user_data["pending_type"] = "image" if is_image else "pdf"
-        await update.message.reply_text("Send the password to print this file.")
+        context.user_data["awaiting_auth"] = True
+        await update.message.reply_text("Please send the password to print this file.")
 
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -174,7 +200,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     else:
         context.user_data["pending_doc"] = photo
         context.user_data["pending_type"] = "image"
-        await update.message.reply_text("Send the password to print this photo.")
+        context.user_data["awaiting_auth"] = True
+        await update.message.reply_text("Please send the password to print this photo.")
 
 
 def main() -> None:
