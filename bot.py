@@ -2,6 +2,7 @@ import hmac
 import logging
 import traceback
 
+import aiohttp
 from telegram import Update
 from telegram.ext import (
     ApplicationBuilder,
@@ -72,6 +73,23 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.message.reply_text("Cancelled.")
     else:
         await update.message.reply_text("Nothing to cancel.")
+
+
+async def checkbell(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not is_authorized(update.effective_user.id):
+        await update.message.reply_text("You need to authenticate first. Send me a message to get started.")
+        return
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get("http://192.168.0.215", timeout=aiohttp.ClientTimeout(total=5)) as response:
+                if response.status == 200:
+                    await update.message.reply_text("bell checked")
+                else:
+                    await update.message.reply_text("bell check failed")
+    except Exception:
+        logger.exception("Bell check failed")
+        await update.message.reply_text("bell check failed")
 
 
 async def _complete_auth(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
@@ -211,6 +229,7 @@ def main() -> None:
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("admin", contact_admin))
     app.add_handler(CommandHandler("cancel", cancel))
+    app.add_handler(CommandHandler("checkbell", checkbell))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
     app.add_handler(MessageHandler(filters.Document.ALL, handle_document))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
