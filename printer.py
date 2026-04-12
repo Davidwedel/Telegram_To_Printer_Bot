@@ -71,6 +71,7 @@ def _fit_to_letter(pdf_bytes: bytes) -> bytes:
                 "-sPAPERSIZE=letter",
                 "-dFIXEDMEDIA",
                 "-dPDFFitPage",
+                "-dEmbedAllFonts=true",
                 f"-sOutputFile={outfile.name}",
                 infile.name,
             ],
